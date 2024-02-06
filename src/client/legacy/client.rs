@@ -1409,7 +1409,7 @@ impl Builder {
     where
         M: Timer + Clone + Send + Sync + 'static,
     {
-        self.pool_timer = Some(timer::Timer::new(timer.clone()));
+        self.pool_timer = Some(timer::Timer::new());
         self
     }
 

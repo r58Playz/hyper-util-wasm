@@ -6,7 +6,7 @@ use wasmtimer::std::Instant;
 
 use wasmtimer::tokio::Sleep;
 
-pub(crate) trait TimerTrait {
+pub trait TimerTrait {
     fn sleep(&self, duration: Duration) -> Sleep;
     fn sleep_until(&self, deadline: Instant) -> Sleep;
 }
