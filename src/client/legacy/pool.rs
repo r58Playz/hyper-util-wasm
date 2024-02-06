@@ -12,16 +12,14 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex, Weak};
 use std::task::{self, Poll};
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use wasmtimer::{std::Instant, tokio::Sleep};
 
 use futures_channel::oneshot;
 use futures_util::ready;
 use tracing::{debug, trace};
 
-use hyper::rt::Sleep;
-use hyper::rt::Timer as _;
-
-use crate::common::{exec, exec::Exec, timer::Timer};
+use crate::common::{exec, exec::Exec, timer::{Timer, TimerTrait}};
 
 // FIXME: allow() required due to `impl Trait` leaking types to this lint
 #[allow(missing_debug_implementations)]
@@ -127,7 +125,7 @@ impl<T, K: Key> Pool<T, K> {
         M: hyper::rt::Timer + Send + Sync + Clone + 'static,
     {
         let exec = Exec::new(executor);
-        let timer = timer.map(|t| Timer::new(t));
+        let timer = Some(Timer::new());
         let inner = if config.is_enabled() {
             Some(Arc::new(Mutex::new(PoolInner {
                 connecting: HashSet::new(),
@@ -480,8 +478,7 @@ impl<T: Poolable, K: Key> PoolInner<T, K> {
                     return false;
                 }
 
-                // Avoid `Instant::sub` to avoid issues like rust-lang/rust#86470.
-                if now.saturating_duration_since(entry.idle_at) > dur {
+                if now.duration_since(entry.idle_at) > dur {
                     trace!("idle interval evicting expired for {:?}", key);
                     return false;
                 }
@@ -757,8 +754,7 @@ impl Expiration {
 
     fn expires(&self, instant: Instant) -> bool {
         match self.0 {
-            // Avoid `Instant::elapsed` to avoid issues like rust-lang/rust#86470.
-            Some(timeout) => Instant::now().saturating_duration_since(instant) > timeout,
+            Some(timeout) => Instant::now().duration_since(instant) > timeout,
             None => false,
         }
     }
@@ -769,7 +765,7 @@ pin_project_lite::pin_project! {
         timer: Timer,
         duration: Duration,
         deadline: Instant,
-        fut: Pin<Box<dyn Sleep>>,
+        fut: Sleep,
         pool: WeakOpt<Mutex<PoolInner<T, K>>>,
         // This allows the IdleTask to be notified as soon as the entire
         // Pool is fully dropped, and shutdown. This channel is never sent on,

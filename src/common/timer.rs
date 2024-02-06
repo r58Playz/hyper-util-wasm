@@ -1,23 +1,23 @@
 #![allow(dead_code)]
 
 use std::fmt;
-use std::pin::Pin;
-use std::sync::Arc;
 use std::time::Duration;
-use std::time::Instant;
+use wasmtimer::std::Instant;
 
-use hyper::rt::Sleep;
+use wasmtimer::tokio::Sleep;
+
+pub(crate) trait TimerTrait {
+    fn sleep(&self, duration: Duration) -> Sleep;
+    fn sleep_until(&self, deadline: Instant) -> Sleep;
+}
 
 #[derive(Clone)]
-pub(crate) struct Timer(Arc<dyn hyper::rt::Timer + Send + Sync>);
+pub(crate) struct Timer();
 
 // =====impl Timer=====
 impl Timer {
-    pub(crate) fn new<T>(inner: T) -> Self
-    where
-        T: hyper::rt::Timer + Send + Sync + 'static,
-    {
-        Self(Arc::new(inner))
+    pub(crate) fn new() -> Self {
+        Self()
     }
 }
 
@@ -27,12 +27,12 @@ impl fmt::Debug for Timer {
     }
 }
 
-impl hyper::rt::Timer for Timer {
-    fn sleep(&self, duration: Duration) -> Pin<Box<dyn Sleep>> {
-        self.0.sleep(duration)
+impl TimerTrait for Timer {
+    fn sleep(&self, duration: Duration) -> Sleep {
+        wasmtimer::tokio::sleep(duration)
     }
 
-    fn sleep_until(&self, deadline: Instant) -> Pin<Box<dyn Sleep>> {
-        self.0.sleep_until(deadline)
+    fn sleep_until(&self, deadline: Instant) -> Sleep {
+        wasmtimer::tokio::sleep_until(deadline)
     }
 }
