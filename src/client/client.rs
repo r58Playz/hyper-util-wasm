@@ -43,6 +43,7 @@ pub enum Ver {
 
 impl<M, /*ReqBody, ResBody,*/ E> Client<M>
 where
+    /*
     M: MakeService<
         hyper::Uri,
         Request<()>,
@@ -50,7 +51,8 @@ where
         Error = E,
         MakeError = E,
     >,
-    //M: Service<hyper::Uri, Error = E>,
+    */
+    M: Service<hyper::Uri, Error = E>,
     //M::Response: Service<Request<ReqBody>, Response = Response<ResBody>>,
 {
     pub async fn request(&mut self, req: Request<()>) -> Result<Response<()>, E> {
