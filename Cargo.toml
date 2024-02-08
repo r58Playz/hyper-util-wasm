@@ -1,13 +1,12 @@
 [package]
-name = "hyper-util"
+name = "hyper-util-wasm"
 version = "0.1.3"
-description = "hyper utilities"
+description = "hyper utilities, patched for wasm"
 readme = "README.md"
 homepage = "https://hyper.rs"
-documentation = "https://docs.rs/hyper-util"
-repository = "https://github.com/hyperium/hyper-util"
+repository = "https://github.com/r58Playz/hyper-util-wasm"
 license = "MIT"
-authors = ["Sean McArthur <sean@seanmonstar.com>"]
+authors = ["Sean McArthur <sean@seanmonstar.com>", "r58Playz"]
 keywords = ["http", "hyper", "hyperium"]
 categories = ["network-programming", "web-programming::http-client", "web-programming::http-server"]
 edition = "2021"
