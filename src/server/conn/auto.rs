@@ -7,7 +7,7 @@ use std::marker::PhantomPinned;
 use std::mem::MaybeUninit;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::{error::Error as StdError, io, marker::Unpin, time::Duration};
+use std::{error::Error as StdError, io, time::Duration};
 
 use bytes::Bytes;
 use http::{Request, Response};
@@ -174,6 +174,7 @@ where
         buf: [MaybeUninit::uninit(); 24],
         filled: 0,
         version: Version::H2,
+        cancelled: false,
         _pin: PhantomPinned,
     }
 }
@@ -185,9 +186,16 @@ pin_project! {
         // the amount of `buf` thats been filled
         filled: usize,
         version: Version,
+        cancelled: bool,
         // Make this future `!Unpin` for compatibility with async trait methods.
         #[pin]
         _pin: PhantomPinned,
+    }
+}
+
+impl<I> ReadVersion<I> {
+    pub fn cancel(self: Pin<&mut Self>) {
+        *self.project().cancelled = true;
     }
 }
 
@@ -199,6 +207,9 @@ where
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
+        if *this.cancelled {
+            return Poll::Ready(Err(io::Error::new(io::ErrorKind::Interrupted, "Cancelled")));
+        }
 
         let mut buf = ReadBuf::uninit(&mut *this.buf);
         // SAFETY: `this.filled` tracks how many bytes have been read (and thus initialized) and
@@ -215,7 +226,7 @@ where
 
             // We starts as H2 and switch to H1 when we don't get the preface.
             if buf.filled().len() == len
-                || &buf.filled()[len..] != &H2_PREFACE[len..buf.filled().len()]
+                || buf.filled()[len..] != H2_PREFACE[len..buf.filled().len()]
             {
                 *this.version = Version::H1;
                 break;
@@ -296,7 +307,7 @@ where
     /// `Connection::poll` has resolved, this does nothing.
     pub fn graceful_shutdown(self: Pin<&mut Self>) {
         match self.project().state.project() {
-            ConnStateProj::ReadVersion { .. } => {}
+            ConnStateProj::ReadVersion { read_version, .. } => read_version.cancel(),
             #[cfg(feature = "http1")]
             ConnStateProj::H1 { conn } => conn.graceful_shutdown(),
             #[cfg(feature = "http2")]
@@ -420,7 +431,7 @@ where
     /// called after `UpgradeableConnection::poll` has resolved, this does nothing.
     pub fn graceful_shutdown(self: Pin<&mut Self>) {
         match self.project().state.project() {
-            UpgradeableConnStateProj::ReadVersion { .. } => {}
+            UpgradeableConnStateProj::ReadVersion { read_version, .. } => read_version.cancel(),
             #[cfg(feature = "http1")]
             UpgradeableConnStateProj::H1 { conn } => conn.graceful_shutdown(),
             #[cfg(feature = "http2")]
@@ -549,6 +560,26 @@ impl<E> Http1Builder<'_, E> {
         self
     }
 
+    /// Set the maximum number of headers.
+    ///
+    /// When a request is received, the parser will reserve a buffer to store headers for optimal
+    /// performance.
+    ///
+    /// If server receives more headers than the buffer size, it responds to the client with
+    /// "431 Request Header Fields Too Large".
+    ///
+    /// The headers is allocated on the stack by default, which has higher performance. After
+    /// setting this value, headers will be allocated in heap memory, that is, heap memory
+    /// allocation will occur for each request, and there will be a performance drop of about 5%.
+    ///
+    /// Note that this setting does not affect HTTP/2.
+    ///
+    /// Default is 100.
+    pub fn max_headers(&mut self, val: usize) -> &mut Self {
+        self.inner.http1.max_headers(val);
+        self
+    }
+
     /// Set a timeout for reading client request headers. If a client does not
     /// transmit the entire header within this time, the connection is closed.
     ///
@@ -648,6 +679,17 @@ impl<E> Http2Builder<'_, E> {
     /// Http1 configuration.
     pub fn http1(&mut self) -> Http1Builder<'_, E> {
         Http1Builder { inner: self.inner }
+    }
+
+    /// Configures the maximum number of pending reset streams allowed before a GOAWAY will be sent.
+    ///
+    /// This will default to the default value set by the [`h2` crate](https://crates.io/crates/h2).
+    /// As of v0.4.0, it is 20.
+    ///
+    /// See <https://github.com/hyperium/hyper/issues/2877> for more information.
+    pub fn max_pending_accept_reset_streams(&mut self, max: impl Into<Option<usize>>) -> &mut Self {
+        self.inner.http2.max_pending_accept_reset_streams(max);
+        self
     }
 
     /// Sets the [`SETTINGS_INITIAL_WINDOW_SIZE`][spec] option for HTTP2
@@ -794,8 +836,11 @@ mod tests {
     use http_body::Body;
     use http_body_util::{BodyExt, Empty, Full};
     use hyper::{body, body::Bytes, client, service::service_fn};
-    use std::{convert::Infallible, error::Error as StdError, net::SocketAddr};
-    use tokio::net::{TcpListener, TcpStream};
+    use std::{convert::Infallible, error::Error as StdError, net::SocketAddr, time::Duration};
+    use tokio::{
+        net::{TcpListener, TcpStream},
+        pin,
+    };
 
     const BODY: &[u8] = b"Hello, world!";
 
@@ -847,6 +892,40 @@ mod tests {
         let body = response.into_body().collect().await.unwrap().to_bytes();
 
         assert_eq!(body, BODY);
+    }
+
+    #[cfg(not(miri))]
+    #[tokio::test]
+    async fn graceful_shutdown() {
+        let listener = TcpListener::bind(SocketAddr::from(([127, 0, 0, 1], 0)))
+            .await
+            .unwrap();
+
+        let listener_addr = listener.local_addr().unwrap();
+
+        // Spawn the task in background so that we can connect there
+        let listen_task = tokio::spawn(async move { listener.accept().await.unwrap() });
+        // Only connect a stream, do not send headers or anything
+        let _stream = TcpStream::connect(listener_addr).await.unwrap();
+
+        let (stream, _) = listen_task.await.unwrap();
+        let stream = TokioIo::new(stream);
+        let builder = auto::Builder::new(TokioExecutor::new());
+        let connection = builder.serve_connection(stream, service_fn(hello));
+
+        pin!(connection);
+
+        connection.as_mut().graceful_shutdown();
+
+        let connection_error = tokio::time::timeout(Duration::from_millis(200), connection)
+            .await
+            .expect("Connection should have finished in a timely manner after graceful shutdown.")
+            .expect_err("Connection should have been interrupted.");
+
+        let connection_error = connection_error
+            .downcast_ref::<std::io::Error>()
+            .expect("The error should have been `std::io::Error`.");
+        assert_eq!(connection_error.kind(), std::io::ErrorKind::Interrupted);
     }
 
     async fn connect_h1<B>(addr: SocketAddr) -> client::conn::http1::SendRequest<B>
