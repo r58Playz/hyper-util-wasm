@@ -1,6 +1,6 @@
 [package]
 name = "hyper-util-wasm"
-version = "0.1.6-1"
+version = "0.1.7"
 description = "hyper utilities, patched for wasm"
 readme = "README.md"
 homepage = "https://hyper.rs"
