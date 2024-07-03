@@ -1470,7 +1470,7 @@ impl Builder {
     }
 
     /// Provide a timer to be used for timeouts and intervals in connection pools.
-    pub fn pool_timer<M>(&mut self, timer: M) -> &mut Self
+    pub fn pool_timer<M>(&mut self, _timer: M) -> &mut Self
     where
         M: Timer + Clone + Send + Sync + 'static,
     {

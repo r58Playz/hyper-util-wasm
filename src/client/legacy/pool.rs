@@ -118,7 +118,7 @@ impl Config {
 }
 
 impl<T, K: Key> Pool<T, K> {
-    pub fn new<E, M>(config: Config, executor: E, timer: Option<M>) -> Pool<T, K>
+    pub fn new<E, M>(config: Config, executor: E, _timer: Option<M>) -> Pool<T, K>
     where
         E: hyper::rt::Executor<exec::BoxSendFuture> + Send + Sync + Clone + 'static,
         M: TimerTrait + Send + Sync + Clone + 'static,
