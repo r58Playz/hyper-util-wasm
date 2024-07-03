@@ -19,7 +19,6 @@ use hyper::rt::Timer;
 use hyper::{body::Body, Method, Request, Response, Uri, Version};
 use tracing::{debug, trace, warn};
 
-use super::connect::capture::CaptureConnectionExtension;
 #[cfg(feature = "tokio")]
 use super::connect::HttpConnector;
 use super::connect::{Alpn, Connect, Connected, Connection};
@@ -269,10 +268,6 @@ where
             // `connection_for` already retries checkout errors, so if
             // it returns an error, there's not much else to retry
             .map_err(TrySendError::Nope)?;
-
-        req.extensions_mut()
-            .get_mut::<CaptureConnectionExtension>()
-            .map(|conn| conn.set(&pooled.conn_info));
 
         if pooled.is_http1() {
             if req.version() == Version::HTTP_2 {

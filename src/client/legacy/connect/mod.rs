@@ -74,9 +74,6 @@ pub mod dns;
 #[cfg(feature = "tokio")]
 mod http;
 
-pub(crate) mod capture;
-pub use capture::{capture_connection, CaptureConnection};
-
 pub use self::sealed::Connect;
 
 /// Describes a type returned by a connector.
@@ -172,6 +169,7 @@ impl Connected {
 
     // Don't public expose that `Connected` is `Clone`, unsure if we want to
     // keep that contract...
+    #[cfg(feature = "http2")]
     pub(super) fn clone(&self) -> Connected {
         Connected {
             alpn: self.alpn,
