@@ -21,7 +21,7 @@ use tracing::{debug, trace, warn};
 
 #[cfg(feature = "tokio")]
 use super::connect::HttpConnector;
-use super::connect::{Alpn, Connect, Connected, Connection};
+use super::connect::{Alpn, ConnectSvc, Connected, Connection};
 use super::pool::{self, Ver};
 
 use crate::common::{lazy as hyper_lazy, timer, Exec, Lazy, SyncWrapper};
@@ -134,7 +134,7 @@ impl Client<(), ()> {
 
 impl<C, B> Client<C, B>
 where
-    C: Connect + Clone + Send + Sync + 'static,
+    C: ConnectSvc + Clone + Send + Sync + 'static,
     B: Body + Send + 'static + Unpin,
     B::Data: Send,
     B::Error: Into<Box<dyn StdError + Send + Sync>>,
@@ -514,7 +514,7 @@ where
             };
             Either::Left(
                 connector
-                    .connect(super::connect::sealed::Internal, dst)
+                    .connect(dst)
                     .map_err(|src| e!(Connect, src))
                     .and_then(move |io| {
                         let connected = io.connected();
@@ -597,46 +597,6 @@ where
                     }),
             )
         })
-    }
-}
-
-impl<C, B> tower_service::Service<Request<B>> for Client<C, B>
-where
-    C: Connect + Clone + Send + Sync + 'static,
-    B: Body + Send + 'static + Unpin,
-    B::Data: Send,
-    B::Error: Into<Box<dyn StdError + Send + Sync>>,
-{
-    type Response = Response<hyper::body::Incoming>;
-    type Error = Error;
-    type Future = ResponseFuture;
-
-    fn poll_ready(&mut self, _: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, req: Request<B>) -> Self::Future {
-        self.request(req)
-    }
-}
-
-impl<C, B> tower_service::Service<Request<B>> for &'_ Client<C, B>
-where
-    C: Connect + Clone + Send + Sync + 'static,
-    B: Body + Send + 'static + Unpin,
-    B::Data: Send,
-    B::Error: Into<Box<dyn StdError + Send + Sync>>,
-{
-    type Response = Response<hyper::body::Incoming>;
-    type Error = Error;
-    type Future = ResponseFuture;
-
-    fn poll_ready(&mut self, _: &mut task::Context<'_>) -> Poll<Result<(), Self::Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn call(&mut self, req: Request<B>) -> Self::Future {
-        self.request(req)
     }
 }
 
@@ -1538,7 +1498,7 @@ impl Builder {
     /// Combine the configuration of this builder with a connector to create a `Client`.
     pub fn build<C, B>(&self, connector: C) -> Client<C, B>
     where
-        C: Connect + Clone,
+        C: ConnectSvc + Clone,
         B: Body + Send,
         B::Data: Send,
     {
