@@ -1541,7 +1541,7 @@ impl fmt::Debug for Error {
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "client error ({})", self.source.unwrap_or_else(|| format!("{:?}", self.kind)));
+        write!(f, "client error ({})", self.source.as_ref().map(|x| format!("{}", x)).unwrap_or_else(|| format!("{:?}", self.kind)))
     }
 }
 
