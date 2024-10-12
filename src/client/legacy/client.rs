@@ -315,7 +315,7 @@ where
                 return if let Some(req) = err.take_message() {
                     Err(TrySendError::Retryable {
                         connection_reused: pooled.is_reused(),
-                        error: e!(Canceled, err.into_error())
+                        error: e!(Canceled, err.into_error()),
                         req,
                     })
                 } else {
