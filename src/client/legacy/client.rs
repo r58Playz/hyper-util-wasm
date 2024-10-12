@@ -316,7 +316,6 @@ where
                     Err(TrySendError::Retryable {
                         connection_reused: pooled.is_reused(),
                         error: e!(Canceled, err.into_error())
-                            .with_connect_info(pooled.conn_info.clone()),
                         req,
                     })
                 } else {
