@@ -58,7 +58,7 @@ full = [
     "tokio",
 ]
 
-client = ["hyper/client", "dep:tracing", "dep:futures-channel"]
+client = ["hyper/client", "dep:tracing", "dep:futures-channel", "dep:tower", "dep:tower-service"]
 client-legacy = ["client"]
 
 server = ["hyper/server"]

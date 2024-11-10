@@ -74,7 +74,7 @@ pub mod dns;
 #[cfg(feature = "tokio")]
 mod http;
 
-pub use self::sealed::ConnectSvc;
+pub use self::sealed::Connect;
 
 /// Describes a type returned by a connector.
 pub trait Connection {
@@ -254,18 +254,75 @@ pub(super) mod sealed {
 
     use super::Connection;
 
-    /// Internal trait that was never supposed to be exposed.
+    /// Connect to a destination, returning an IO transport.
+    ///
+    /// A connector receives a [`Uri`](::http::Uri) and returns a `Future` of the
+    /// ready connection.
+    ///
+    /// # Trait Alias
+    ///
+    /// This is really just an *alias* for the `tower::Service` trait, with
+    /// additional bounds set for convenience *inside* hyper. You don't actually
+    /// implement this trait, but `tower::Service<Uri>` instead.
+    // The `Sized` bound is to prevent creating `dyn Connect`, since they cannot
+    // fit the `Connect` bounds because of the blanket impl for `Service`.
+    pub trait Connect: Sealed + Sized {
+        #[doc(hidden)]
+        type _Svc: ConnectSvc;
+        #[doc(hidden)]
+        fn connect(self, internal_only: Internal, dst: Uri) -> <Self::_Svc as ConnectSvc>::Future;
+    }
+
     pub trait ConnectSvc {
-        /// Internal trait that was never supposed to be exposed.
         type Connection: Read + Write + Connection + Unpin + Send + 'static;
-        /// Internal trait that was never supposed to be exposed.
         type Error: Into<Box<dyn StdError + Send + Sync>>;
-        /// Internal trait that was never supposed to be exposed.
         type Future: Future<Output = Result<Self::Connection, Self::Error>> + Unpin + Send + 'static;
 
-        /// Internal trait that was never supposed to be exposed.
-        fn connect(self, dst: Uri) -> Self::Future;
+        fn connect(self, internal_only: Internal, dst: Uri) -> Self::Future;
     }
+
+    impl<S, T> Connect for S
+    where
+        S: tower_service::Service<Uri, Response = T> + Send + 'static,
+        S::Error: Into<Box<dyn StdError + Send + Sync>>,
+        S::Future: Unpin + Send,
+        T: Read + Write + Connection + Unpin + Send + 'static,
+    {
+        type _Svc = S;
+
+        fn connect(self, _: Internal, dst: Uri) -> tower::util::Oneshot<S, Uri> {
+            tower::util::Oneshot::new(self, dst)
+        }
+    }
+
+    impl<S, T> ConnectSvc for S
+    where
+        S: tower_service::Service<Uri, Response = T> + Send + 'static,
+        S::Error: Into<Box<dyn StdError + Send + Sync>>,
+        S::Future: Unpin + Send,
+        T: Read + Write + Connection + Unpin + Send + 'static,
+    {
+        type Connection = T;
+        type Error = S::Error;
+        type Future = tower::util::Oneshot<S, Uri>;
+
+        fn connect(self, _: Internal, dst: Uri) -> Self::Future {
+            tower::util::Oneshot::new(self, dst)
+        }
+    }
+
+    impl<S, T> Sealed for S
+    where
+        S: tower_service::Service<Uri, Response = T> + Send,
+        S::Error: Into<Box<dyn StdError + Send + Sync>>,
+        S::Future: Unpin + Send,
+        T: Read + Write + Connection + Unpin + Send + 'static,
+    {
+    }
+
+    pub trait Sealed {}
+    #[allow(missing_debug_implementations)]
+    pub struct Internal;
 }
 
 #[cfg(test)]
