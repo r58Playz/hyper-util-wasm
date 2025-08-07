@@ -19,6 +19,7 @@ use hyper::rt::Timer;
 use hyper::{body::Body, Method, Request, Response, Uri, Version};
 use tracing::{debug, trace, warn};
 
+#[cfg(feature = "client-legacy-extra")]
 use super::connect::capture::CaptureConnectionExtension;
 #[cfg(feature = "tokio")]
 use super::connect::HttpConnector;
@@ -284,6 +285,7 @@ where
             // it returns an error, there's not much else to retry
             .map_err(TrySendError::Nope)?;
 
+        #[cfg(feature = "client-legacy-extra")]
         if let Some(conn) = req.extensions_mut().get_mut::<CaptureConnectionExtension>() {
             conn.set(&pooled.conn_info);
         }
@@ -578,7 +580,7 @@ where
                                     // Create a oneshot channel to communicate errors from the connection task.
                                     // err_tx sends errors from the connection task, and err_rx receives them
                                     // to correlate connection failures with request readiness errors.
-                                    let (err_tx, err_rx) = tokio::sync::oneshot::channel();
+                                    let (err_tx, err_rx) = futures_channel::oneshot::channel();
                                     // Spawn the connection task in the background using the executor.
                                     // The task manages the HTTP/1.1 connection, including upgrades (e.g., WebSocket).
                                     // Errors are sent via err_tx to ensure they can be checked if the sender (tx) fails.
@@ -1523,11 +1525,8 @@ impl Builder {
     }
 
     /// Provide a timer to be used for timeouts and intervals in connection pools.
-    pub fn pool_timer<M>(&mut self, timer: M) -> &mut Self
-    where
-        M: Timer + Clone + Send + Sync + 'static,
-    {
-        self.pool_timer = Some(timer::Timer::new(timer.clone()));
+    pub fn pool_timer(&mut self) -> &mut Self {
+        self.pool_timer = Some(timer::Timer::new());
         self
     }
 

@@ -34,6 +34,7 @@ socket2 = { version = ">=0.5.9, <0.7", optional = true, features = ["all"] }
 tracing = { version = "0.1", default-features = false, features = ["std"], optional = true }
 tokio = { version = "1", optional = true, default-features = false  }
 tower-service = { version = "0.3", optional = true }
+wasmtimer = "0.4.2"
 
 [dev-dependencies]
 hyper = { version = "1.4.0", features = ["full"] }
@@ -60,6 +61,7 @@ default = []
 full = [
     "client",
     "client-legacy",
+    "client-legacy-extra",
     "client-proxy",
     "client-proxy-system",
     "server",
@@ -72,8 +74,9 @@ full = [
     "tracing",
 ]
 
-client = ["hyper/client", "tokio/net", "dep:tracing", "dep:futures-channel", "dep:tower-service"]
-client-legacy = ["client", "dep:socket2", "tokio/sync", "dep:libc", "dep:futures-util"]
+client = ["hyper/client", "dep:tracing", "dep:futures-channel", "dep:tower-service"]
+client-legacy = ["client", "dep:futures-util"]
+client-legacy-extra = ["client-legacy", "dep:socket2", "tokio/sync", "dep:libc"]
 client-proxy = ["client", "dep:base64", "dep:ipnet", "dep:percent-encoding"]
 client-proxy-system = ["dep:system-configuration", "dep:windows-registry"]
 

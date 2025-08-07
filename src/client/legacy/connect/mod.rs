@@ -82,7 +82,9 @@ mod http;
 
 pub mod proxy;
 
+#[cfg(feature = "client-legacy-extra")]
 pub(crate) mod capture;
+#[cfg(feature = "client-legacy-extra")]
 pub use capture::{capture_connection, CaptureConnection};
 
 pub use self::sealed::Connect;

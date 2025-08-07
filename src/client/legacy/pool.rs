@@ -11,13 +11,12 @@ use std::pin::Pin;
 use std::sync::{Arc, Mutex, Weak};
 use std::task::{self, Poll};
 
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use wasmtimer::std::Instant;
 
 use futures_channel::oneshot;
 use futures_core::ready;
 use tracing::{debug, trace};
-
-use hyper::rt::Timer as _;
 
 use crate::common::{exec, exec::Exec, timer::Timer};
 
@@ -119,13 +118,11 @@ impl Config {
 }
 
 impl<T, K: Key> Pool<T, K> {
-    pub fn new<E, M>(config: Config, executor: E, timer: Option<M>) -> Pool<T, K>
+    pub fn new<E>(config: Config, executor: E, timer: Option<Timer>) -> Pool<T, K>
     where
         E: hyper::rt::Executor<exec::BoxSendFuture> + Send + Sync + Clone + 'static,
-        M: hyper::rt::Timer + Send + Sync + Clone + 'static,
     {
         let exec = Exec::new(executor);
-        let timer = timer.map(|t| Timer::new(t));
         let inner = if config.is_enabled() {
             Some(Arc::new(Mutex::new(PoolInner {
                 connecting: HashSet::new(),
